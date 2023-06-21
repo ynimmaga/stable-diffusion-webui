@@ -15,6 +15,8 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from packaging import version
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+import openvino.frontend.pytorch.torchdynamo.backend
 
 import logging
 
@@ -299,11 +301,23 @@ def initialize_rest(*, reload_script_modules=False):
         by that time, so we apply optimization again.
         """
 
-        shared.sd_model  # noqa: B018
+        if not cmd_opts.diffusers:
+            shared.sd_model  # noqa: B018
 
-        if modules.sd_hijack.current_optimizer is None:
-            modules.sd_hijack.apply_optimizations()
-
+            if modules.sd_hijack.current_optimizer is None:
+                modules.sd_hijack.apply_optimizations()
+        else:
+            print("Loading `diffusers` backend")
+            model_id = "runwayml/stable-diffusion-v1-5"
+            scheduler = UniPCMultistepScheduler.from_pretrained(model_id, subfolder="scheduler")
+            sd_model = StableDiffusionPipeline.from_pretrained(model_id) 
+            sd_model.unet = torch.compile(sd_model.unet, backend="openvino")
+            sd_model.sd_model_hash = sd_model.unet.config._name_or_path.split("/")[-2]
+            shared.sd_model = sd_model
+            # Warm up run to compile and load the model
+            warmup_prompt = "a dog walking in a park"
+            image = sd_model(warmup_prompt, num_inference_steps=1).images[0]
+        
     Thread(target=load_model).start()
 
     shared.reload_hypernetworks()

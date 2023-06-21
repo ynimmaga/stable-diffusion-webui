@@ -13,6 +13,7 @@ import modules.interrogate
 import modules.memmon
 import modules.styles
 import modules.devices as devices
+from enum import Enum
 from modules import localization, script_loading, errors, ui_components, shared_items, cmd_args
 from modules.paths_internal import models_path, script_path, data_path, sd_configs_path, sd_default_config, sd_model_file, default_sd_model_file, extensions_dir, extensions_builtin_dir  # noqa: F401
 from ldm.models.diffusion.ddpm import LatentDiffusion
@@ -71,6 +72,9 @@ gradio_hf_hub_themes = [
     "ysharma/steampunk"
 ]
 
+class Backend(Enum):
+    ORIG_SD = 1
+    DIFFUSERS = 2
 
 cmd_opts.disable_extension_access = (cmd_opts.share or cmd_opts.listen or cmd_opts.server_name) and not cmd_opts.enable_insecure_extension_access
 
@@ -92,6 +96,7 @@ os.makedirs(cmd_opts.hypernetwork_dir, exist_ok=True)
 hypernetworks = {}
 loaded_hypernetworks = []
 
+backend = Backend.DIFFUSERS if cmd_opts.diffusers else Backend.ORIG_SD
 
 def reload_hypernetworks():
     from modules.hypernetworks import hypernetwork
@@ -494,8 +499,8 @@ options_templates.update(options_section(('ui', "User interface"), {
 }))
 
 options_templates.update(options_section(('infotext', "Infotext"), {
-    "add_model_hash_to_info": OptionInfo(True, "Add model hash to generation information"),
-    "add_model_name_to_info": OptionInfo(True, "Add model name to generation information"),
+    "add_model_hash_to_info": OptionInfo(True if backend == Backend.ORIG_SD else False, "Add model hash to generation information"),
+    "add_model_name_to_info": OptionInfo(True if backend == Backend.ORIG_SD else False, "Add model name to generation information"),
     "add_version_to_infotext": OptionInfo(True, "Add program version to generation information"),
     "disable_weights_auto_swap": OptionInfo(True, "When reading generation parameters from text into UI (from PNG info or pasted text), do not change the selected model/checkpoint."),
 }))
@@ -535,7 +540,7 @@ options_templates.update(options_section(('postprocessing', "Postprocessing"), {
 
 options_templates.update(options_section((None, "Hidden options"), {
     "disabled_extensions": OptionInfo([], "Disable these extensions"),
-    "disable_all_extensions": OptionInfo("none", "Disable all extensions (preserves the list of disabled extensions)", gr.Radio, {"choices": ["none", "extra", "all"]}),
+    "disable_all_extensions": OptionInfo("all" if cmd_opts.diffusers else "none", "Disable all extensions (preserves the list of disabled extensions)", gr.Radio, {"choices": ["none", "extra", "all"]}),
     "restore_config_state_file": OptionInfo("", "Config state file to restore from, under 'config-states/' folder"),
     "sd_checkpoint_hash": OptionInfo("", "SHA256 hash of the current checkpoint"),
 }))
